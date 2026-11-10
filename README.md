@@ -71,12 +71,6 @@ Toggle **Resources** in the toolbar to list everything the flow uses — externa
 - **Copy…**: image (PNG, ready to paste into chats and documents), SVG, PlantUML, Mermaid, resources (Markdown)
 - **Export…**: SVG (vector), PNG (3x resolution), PlantUML (`.puml`), Mermaid (`.mmd`), resources (`.md`)
 
-## Getting Started
-1. Install the plugin: **Settings | Plugins | ⚙ | Install Plugin from Disk…** and choose `build/distributions/intellij-seq-lens-<version>.zip`.
-2. Place the caret inside a Java method, right-click and choose **SeqLens: Generate Sequence Diagram** (also available from the Project view, the Structure view and the **Tools** menu).
-3. Click arrows, participants and notes to jump to the code; zoom with **Ctrl/⌘ + mouse wheel**.
-4. Tune the analysis in **Settings | Tools | SeqLens**: tool window position, font size, maximum depth, stop list, exclusions, and JPA / HTTP / MapStruct detection. Hover the **?** next to an option for details.
-
 ## Building from Source
 Requires JDK 21 (selected automatically through the Gradle toolchain).
 
