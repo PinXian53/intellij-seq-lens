@@ -1,10 +1,22 @@
 <div align="center">
-    <img src="./src/main/resources/META-INF/pluginIcon.svg" width="200" height="200" alt="logo"/>
+    <a href="https://plugins.jetbrains.com/plugin/35963-seqlens">
+        <img src="./src/main/resources/META-INF/pluginIcon.svg" width="280" height="280" alt="logo"/>
+    </a>
 </div>
 
 <h1 align="center">SeqLens</h1>
 
 <p align="center">Turn Java code into interactive sequence diagrams — with the database tables and external APIs it touches.</p>
+
+<p align="center">
+<a href="https://plugins.jetbrains.com/plugin/35963-seqlens"><img src="https://img.shields.io/jetbrains/plugin/r/stars/35963?style=flat-square"></a>
+<a href="https://plugins.jetbrains.com/plugin/35963-seqlens"><img src="https://img.shields.io/jetbrains/plugin/d/35963-seqlens.svg?style=flat-square"></a>
+<a href="https://plugins.jetbrains.com/plugin/35963-seqlens"><img src="https://img.shields.io/jetbrains/plugin/v/35963-seqlens.svg?style=flat-square"></a>
+</p>
+
+<br>
+
+> Jetbrains Marketplace: https://plugins.jetbrains.com/plugin/35963-seqlens
 
 <br>
 
