@@ -36,8 +36,9 @@ public final class SeqLensToolWindowFactory implements ToolWindowFactory, DumbAw
     public void init(@NotNull ToolWindow toolWindow) {
         applyAnchor(toolWindow);
         Project project = toolWindow.getProject();
+        SeqLensSettingsListener onSettingsChanged = () -> applyAnchor(toolWindow);
         ApplicationManager.getApplication().getMessageBus().connect(project)
-                .subscribe(SeqLensSettingsListener.TOPIC, () -> applyAnchor(toolWindow));
+                .subscribe(SeqLensSettingsListener.TOPIC, onSettingsChanged);
     }
 
     /** 依設定移動工具視窗（右側 / 下方 / 左側）。 */

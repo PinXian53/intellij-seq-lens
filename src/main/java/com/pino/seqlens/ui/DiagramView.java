@@ -138,12 +138,14 @@ public final class DiagramView extends JPanel implements Disposable {
         add(splitter, BorderLayout.CENTER);
         setDiagram(diagram);
 
+        // 先宣告成明確型別再訂閱：直接傳 lambda 時 IntelliJ 無法推斷 subscribe(Topic<L>, L) 的 L
+        SeqLensSettingsListener onSettingsChanged = () -> {
+            // 字體大小等設定變更：重新排版；資源清單開關：顯示 / 隱藏
+            canvas.setDiagram(this.diagram);
+            updateResourcePanelVisibility();
+        };
         ApplicationManager.getApplication().getMessageBus().connect(this)
-                .subscribe(SeqLensSettingsListener.TOPIC, () -> {
-                    // 字體大小等設定變更：重新排版；資源清單開關：顯示 / 隱藏
-                    canvas.setDiagram(this.diagram);
-                    updateResourcePanelVisibility();
-                });
+                .subscribe(SeqLensSettingsListener.TOPIC, onSettingsChanged);
     }
 
     public @NotNull SmartPsiElementPointer<PsiMethod> root() {
