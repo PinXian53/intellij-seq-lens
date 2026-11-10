@@ -1,0 +1,70 @@
+<idea-plugin>
+    <id>com.pino.seqlens</id>
+    <name>SeqLens</name>
+    <vendor>Pino</vendor>
+
+    <description><![CDATA[
+    <p><b>SeqLens</b> turns Java code into interactive sequence diagrams — together with the database tables
+    and external APIs the code touches.</p>
+    <p>Right-click inside a Java method and choose <b>SeqLens: Generate Sequence Diagram</b>.
+    Every arrow, participant and SQL note is clickable and jumps to the source.</p>
+
+    <h3>Sequence diagrams</h3>
+    <ul>
+        <li>Control flow fragments: <code>alt</code>, <code>opt</code>, <code>loop</code> (including stream lambdas) and <code>try / catch</code></li>
+        <li>Expands the single production implementation of an interface (test fakes ignored, <code>@Primary</code> respected)</li>
+        <li><code>throw</code> drawn as a red dashed arrow back to the caller</li>
+    </ul>
+
+    <h3>Database tables</h3>
+    <ul>
+        <li>Spring Data repositories: derived queries, built-in CRUD, <code>@Query</code> (JPQL / native), <code>@NamedQuery</code></li>
+        <li><code>@DynamicRepository</code> / <code>@DynamicQuery</code> with <code>[ … ]</code> optional fragments</li>
+        <li>JPA <code>EntityManager</code>, Hibernate <code>Session</code>, <code>JdbcTemplate</code>, <code>NamedParameterJdbcTemplate</code>, <code>JdbcClient</code></li>
+        <li>JPQL entity names mapped to table names (<code>@Table</code> → <code>@Entity(name)</code> → snake_case), including joins</li>
+    </ul>
+
+    <h3>External APIs</h3>
+    <ul>
+        <li><code>RestTemplate</code>, <code>RestClient</code>, <code>WebClient</code>, <code>@HttpExchange</code> interfaces and OpenFeign <code>@FeignClient</code></li>
+        <li>Arrows labeled like <code>GET /orders/{id}</code>; service names from URL hosts, <code>@Value("${...}")</code> or Feign client names</li>
+    </ul>
+
+    <h3>Focus and export</h3>
+    <ul>
+        <li>Stop list to draw calls without expanding them; MapStruct mappers shown without their generated implementation</li>
+        <li>Warning when the maximum depth hides part of the flow, with one-click "regenerate deeper"</li>
+        <li>Resources panel listing external APIs, tables and classes / methods used by the flow</li>
+        <li>Copy or export as PNG, SVG, PlantUML, Mermaid or a Markdown resource list</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="SeqLens"
+                    anchor="right"
+                    canCloseContents="true"
+                    icon="/icons/seqlens.svg"
+                    factoryClass="com.pino.seqlens.ui.SeqLensToolWindowFactory"/>
+        <applicationConfigurable parentId="tools"
+                                 instance="com.pino.seqlens.settings.SeqLensConfigurable"
+                                 id="com.pino.seqlens.settings"
+                                 displayName="SeqLens"/>
+        <notificationGroup id="SeqLens" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <action id="SeqLens.GenerateSequenceDiagram"
+                class="com.pino.seqlens.actions.GenerateSequenceDiagramAction"
+                text="SeqLens: Generate Sequence Diagram"
+                description="Generate a sequence diagram for the selected Java method"
+                icon="/icons/seqlens.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="StructureViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
