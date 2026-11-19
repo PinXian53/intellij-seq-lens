@@ -32,6 +32,7 @@ public final class PlantUmlExporter {
                 case CLASS -> "participant";
             };
             sb.append(keyword).append(" \"").append(escape(p.displayName())).append("\" as ").append(a)
+                    .append(p.isSwitchable() && !p.id().equals(p.dispatch().interfaceFqn()) ? " <<" + p.interfaceName() + ">>" : "")
                     .append(p.kind() == com.pino.seqlens.model.ParticipantKind.EXTERNAL ? " <<external>> #F3E8FF"
                             : p.kind() == com.pino.seqlens.model.ParticipantKind.MAPPER ? " <<mapper>> #E6F6F7" : "")
                     .append('\n');
@@ -87,6 +88,7 @@ public final class PlantUmlExporter {
         return switch (c.expansion()) {
             case STOPPED -> " ⊘";
             case DEPTH_LIMIT -> " ⋯";
+            case MULTIPLE_IMPLEMENTATIONS -> " ◇";
             case EXPANDED -> "";
         };
     }

@@ -10,6 +10,7 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
 import com.pino.seqlens.export.PlantUmlExporter;
 import com.pino.seqlens.model.DiagramEvent;
+import com.pino.seqlens.model.Dispatch;
 import com.pino.seqlens.model.MessageKind;
 import com.pino.seqlens.model.Participant;
 import com.pino.seqlens.model.ParticipantKind;
@@ -534,6 +535,167 @@ public class SequenceAnalyzerTest extends LightJavaCodeInsightFixtureTestCase {
         SequenceDiagram d = new SequenceAnalyzer(getProject(), new SeqLensSettings.State())
                 .analyze(caller.findMethodsByName("show", false)[0]);
         assertNotNull("沒有實作的介面方法也要畫出呼叫", findCall(d, "getMonthlyReport("));
+    }
+
+    /** 物流運費：ShippingCarrier 有三個實作，用不同的注入方式驗證實作的選擇。 */
+    protected PsiMethod addShippingSample() {
+        myFixture.addClass("package org.springframework.stereotype; public @interface Service { String value() default \"\"; }");
+        myFixture.addClass("package org.springframework.beans.factory.annotation; public @interface Qualifier { String value() default \"\"; }");
+        myFixture.addClass("package org.springframework.context.annotation; public @interface Primary {}");
+        myFixture.addClass("package demo.ship; public interface ShippingCarrier { int quote(String parcel); }");
+        myFixture.addClass("""
+                package demo.ship;
+                @org.springframework.stereotype.Service
+                public class DhlCarrier implements ShippingCarrier {
+                    public int quote(String parcel) { return weigh(parcel); }
+                    private int weigh(String parcel) { return parcel.length(); }
+                }
+                """);
+        myFixture.addClass("""
+                package demo.ship;
+                @org.springframework.stereotype.Service("fedex")
+                public class FedexCarrier implements ShippingCarrier {
+                    public int quote(String parcel) { return weigh(parcel); }
+                    private int weigh(String parcel) { return parcel.length(); }
+                }
+                """);
+        myFixture.addClass("""
+                package demo.ship;
+                @org.springframework.stereotype.Service
+                @org.springframework.beans.factory.annotation.Qualifier("express")
+                public class UpsCarrier implements ShippingCarrier {
+                    public int quote(String parcel) { return weigh(parcel); }
+                    private int weigh(String parcel) { return parcel.length(); }
+                }
+                """);
+        PsiClass service = myFixture.addClass("""
+                package demo.ship;
+                import org.springframework.beans.factory.annotation.Qualifier;
+                public class ShippingService {
+                    private ShippingCarrier carrier;                         // 無法判斷
+                    private ShippingCarrier dhlCarrier;                      // 依欄位名稱 = bean 名稱
+                    @Qualifier("fedex") private ShippingCarrier preferred;   // 依 @Qualifier = bean 名稱
+                    private final ShippingCarrier expressCarrier;            // 建構子參數上的 @Qualifier = 實作上的 @Qualifier
+                    public ShippingService(@Qualifier("express") ShippingCarrier carrier) {
+                        this.expressCarrier = carrier;
+                    }
+                    public void compare(String parcel) {
+                        carrier.quote(parcel);
+                        dhlCarrier.quote(parcel);
+                        preferred.quote(parcel);
+                        expressCarrier.quote(parcel);
+                    }
+                }
+                """);
+        return service.findMethodsByName("compare", false)[0];
+    }
+
+    private static List<DiagramEvent.Call> quoteCalls(SequenceDiagram d) {
+        return d.getEvents().stream()
+                .filter(e -> e instanceof DiagramEvent.Call c && c.label().equals("quote(parcel)"))
+                .map(e -> (DiagramEvent.Call) e).toList();
+    }
+
+    public void testImplementationChosenAutomatically() {
+        PsiMethod compare = addShippingSample();
+        SequenceDiagram d = new SequenceAnalyzer(getProject(), new SeqLensSettings.State()).analyze(compare);
+        List<DiagramEvent.Call> quotes = quoteCalls(d);
+        assertEquals(4, quotes.size());
+
+        // carrier：三個實作都可能 → 停在介面上，標示 ◇，並列出候選
+        DiagramEvent.Call ambiguous = quotes.get(0);
+        assertEquals("demo.ship.ShippingCarrier", ambiguous.to());
+        assertEquals(DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS, ambiguous.expansion());
+        assertEquals(List.of("demo.ship.DhlCarrier", "demo.ship.FedexCarrier", "demo.ship.UpsCarrier"),
+                ambiguous.dispatch().candidates());
+        assertNull(ambiguous.dispatch().chosen());
+        assertTrue(ambiguous.tooltip(), ambiguous.tooltip().contains("Implementations: DhlCarrier, FedexCarrier, UpsCarrier"));
+
+        // dhlCarrier：欄位名稱等於 bean 名稱
+        assertEquals("demo.ship.DhlCarrier", quotes.get(1).to());
+        assertEquals(Dispatch.Reason.BEAN_NAME, quotes.get(1).dispatch().reason());
+        // preferred：@Qualifier("fedex") 對應 @Service("fedex")
+        assertEquals("demo.ship.FedexCarrier", quotes.get(2).to());
+        assertEquals(Dispatch.Reason.QUALIFIER, quotes.get(2).dispatch().reason());
+        // expressCarrier：建構子參數上的 @Qualifier("express") 對應實作類別上的 @Qualifier("express")
+        assertEquals("demo.ship.UpsCarrier", quotes.get(3).to());
+        assertEquals(Dispatch.Reason.QUALIFIER, quotes.get(3).dispatch().reason());
+
+        // 有展開的實作才會往下畫出 weigh()
+        long weighCalls = d.getEvents().stream()
+                .filter(e -> e instanceof DiagramEvent.Call c && c.label().startsWith("weigh(")).count();
+        assertEquals(3, weighCalls);
+        assertTrue(PlantUmlExporter.export(d).contains("quote(parcel) ◇"));
+
+        // 標頭：經由介面呼叫的參與者都記得原本的介面，可以切換
+        Participant iface = d.getParticipant("demo.ship.ShippingCarrier");
+        assertTrue(iface.isSwitchable());
+        for (String impl : List.of("demo.ship.DhlCarrier", "demo.ship.FedexCarrier", "demo.ship.UpsCarrier")) {
+            Participant p = d.getParticipant(impl);
+            assertTrue(impl, p.isSwitchable());
+            assertEquals("ShippingCarrier", p.interfaceName());
+            assertEquals(3, p.dispatch().candidates().size());
+        }
+        assertTrue(PlantUmlExporter.export(d).contains("participant \"DhlCarrier\" as p3 <<ShippingCarrier>>"));
+    }
+
+    public void testImplementationChosenManually() {
+        PsiMethod compare = addShippingSample();
+        SeqLensSettings.State settings = new SeqLensSettings.State();
+        settings.setImplementationChoice("demo.ship.ShippingCarrier", "demo.ship.FedexCarrier");
+        SequenceDiagram d = new SequenceAnalyzer(getProject(), settings).analyze(compare);
+        // 切換後仍顯示原本的介面，而且可以再切換
+        Participant fedex = d.getParticipant("demo.ship.FedexCarrier");
+        assertTrue(fedex.isSwitchable());
+        assertEquals("ShippingCarrier", fedex.interfaceName());
+        assertEquals(Dispatch.Reason.MANUAL, fedex.dispatch().reason());
+        settings.setImplementationChoice("demo.ship.ShippingCarrier", "demo.ship.UpsCarrier");
+        SequenceDiagram again = new SequenceAnalyzer(getProject(), settings).analyze(compare);
+        assertNull(again.getParticipant("demo.ship.FedexCarrier"));
+        assertTrue(again.getParticipant("demo.ship.UpsCarrier").isSwitchable());
+        settings.setImplementationChoice("demo.ship.ShippingCarrier", "demo.ship.FedexCarrier");
+
+        // 手動選擇優先於所有自動判斷（包含 @Qualifier 與 bean 名稱）
+        for (DiagramEvent.Call quote : quoteCalls(d)) {
+            assertEquals("demo.ship.FedexCarrier", quote.to());
+            assertEquals(Dispatch.Reason.MANUAL, quote.dispatch().reason());
+            assertEquals(DiagramEvent.Expansion.EXPANDED, quote.expansion());
+        }
+        assertEquals(0, d.getEvents().stream().filter(e -> e instanceof DiagramEvent.Call c
+                && c.expansion() == DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS).count());
+
+        // 指定的實作不存在時，回到自動判斷
+        settings.setImplementationChoice("demo.ship.ShippingCarrier", "demo.ship.RemovedCarrier");
+        DiagramEvent.Call first = quoteCalls(new SequenceAnalyzer(getProject(), settings).analyze(compare)).getFirst();
+        assertEquals(DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS, first.expansion());
+    }
+
+    public void testPrimaryImplementation() {
+        addShippingSample();
+        myFixture.addClass("package demo.ship; public interface Discount { int apply(int price); }");
+        myFixture.addClass("package demo.ship; public class NoDiscount implements Discount { public int apply(int p) { return p; } }");
+        myFixture.addClass("package demo.ship; @org.springframework.context.annotation.Primary public class MemberDiscount implements Discount { public int apply(int p) { return p - 1; } }");
+        PsiClass checkout = myFixture.addClass("""
+                package demo.ship;
+                public class Checkout {
+                    private Discount discount;
+                    public int total(int price) { return discount.apply(price); }
+                }
+                """);
+        SequenceDiagram d = new SequenceAnalyzer(getProject(), new SeqLensSettings.State())
+                .analyze(checkout.findMethodsByName("total", false)[0]);
+        DiagramEvent.Call apply = findCall(d, "apply(");
+        assertEquals("demo.ship.MemberDiscount", apply.to());
+        assertEquals(Dispatch.Reason.PRIMARY, apply.dispatch().reason());
+    }
+
+    public void testAutomaticDetectionCanBeTurnedOff() {
+        PsiMethod compare = addShippingSample();
+        SeqLensSettings.State settings = new SeqLensSettings.State();
+        settings.resolveSingleImplementation = false;
+        for (DiagramEvent.Call quote : quoteCalls(new SequenceAnalyzer(getProject(), settings).analyze(compare))) {
+            assertEquals("demo.ship.ShippingCarrier", quote.to());
+        }
     }
 
     protected SequenceDiagram analyze(SeqLensSettings.State settings) {

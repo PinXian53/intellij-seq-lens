@@ -30,7 +30,7 @@ are drawn against the tables and services they reach, so you can see what a requ
 Right-click inside any Java method and choose **SeqLens: Generate Sequence Diagram**. Calls are followed down to the configured depth.
 
 - **Control flow fragments**: `if / else` → `alt` / `opt`, loops and stream lambdas (`forEach`, `map`, …) → `loop`, `try / catch` → `try`, `switch` → `alt`.
-- **Polymorphism aware**: when an interface has exactly one production implementation (test fakes are ignored, `@Primary` breaks ties), that implementation is expanded.
+- **Interface implementations**: calls through an interface expand the implementation Spring would inject — the only (production) implementation, the one matching `@Qualifier` / `@Named` or the field / constructor parameter name, or the `@Primary` one. The interface name is shown above the implementation in the header; click the class name (marked `▾`) to switch to another implementation at any time. When it cannot be decided, the call is marked `◇` and you pick one the same way. Choices are remembered.
 - **`throw`**: drawn as a red dashed arrow back to the caller, labeled with the exception type.
 - **Click to navigate**: arrows jump to the call site, participants to the class, tables to the `@Entity`, notes to the `@Query` / SQL string.
 

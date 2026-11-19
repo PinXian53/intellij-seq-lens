@@ -115,6 +115,30 @@ public class DiagramRenderTest extends SequenceAnalyzerTest {
         }
     }
 
+    public void testRenderImplementationChoice() throws Exception {
+        SequenceDiagram diagram = new com.pino.seqlens.analysis.SequenceAnalyzer(getProject(),
+                new com.pino.seqlens.settings.SeqLensSettings.State()).analyze(addShippingSample());
+        Font font = JBFont.label();
+        Font noteFont = new Font(Font.MONOSPACED, Font.PLAIN, font.getSize() - 1);
+        Canvas metrics = new Canvas();
+        DiagramLayout layout = DiagramLayout.compute(diagram, metrics.getFontMetrics(font), metrics.getFontMetrics(noteFont));
+        PngExporter.Result png = PngExporter.render(layout, new DiagramPainter(font, noteFont), 2.0);
+        PngExporter.write(png.image(), png.scale(), new File(System.getProperty("user.dir"), "build/diagram-implementations.png"));
+
+        var iface = diagram.getParticipant("demo.ship.ShippingCarrier");
+        var dhl = diagram.getParticipant("demo.ship.DhlCarrier");
+        assertEquals("ShippingCarrier ▾", DiagramLayout.headerLabel(iface));
+        assertEquals("◇ 3 implementations", DiagramLayout.interfaceNote(iface));
+        assertEquals("DhlCarrier ▾", DiagramLayout.headerLabel(dhl));
+        assertEquals("«ShippingCarrier»", DiagramLayout.interfaceNote(dhl));
+        assertEquals("ShippingService", DiagramLayout.headerLabel(diagram.getParticipant("demo.ship.ShippingService")));
+        assertNull(DiagramLayout.interfaceNote(diagram.getParticipant("demo.ship.ShippingService")));
+        // 點擊標頭可命中可切換的參與者
+        DiagramLayout.Column column = layout.columns.stream()
+                .filter(c -> c.participant().id().equals("demo.ship.DhlCarrier")).findFirst().orElseThrow();
+        assertSame(column, layout.hitHeader(column.x(), layout.boxH));
+    }
+
     public void testRenderSettingsPage() throws Exception {
         var configurable = new com.pino.seqlens.settings.SeqLensConfigurable();
         javax.swing.JComponent page = configurable.createComponent();
@@ -127,7 +151,7 @@ public class DiagramRenderTest extends SequenceAnalyzerTest {
         page.printAll(g);
         g.dispose();
         ImageIO.write(image, "png", new File(System.getProperty("user.dir"), "build/settings-page.png"));
-        assertEquals("每個需要說明的選項都有 ? 按鈕", 13, countHelpLabels(page));
+        assertEquals("每個需要說明的選項都有 ? 按鈕", 14, countHelpLabels(page));
         configurable.disposeUIResources();
     }
 
@@ -173,6 +197,22 @@ public class DiagramRenderTest extends SequenceAnalyzerTest {
 
     @Override
     public void testRealGettersAreStillSkipped() {
+    }
+
+    @Override
+    public void testImplementationChosenAutomatically() {
+    }
+
+    @Override
+    public void testImplementationChosenManually() {
+    }
+
+    @Override
+    public void testPrimaryImplementation() {
+    }
+
+    @Override
+    public void testAutomaticDetectionCanBeTurnedOff() {
     }
 
     public void testRenderDynamicQuery() throws Exception {

@@ -73,6 +73,7 @@ public final class MermaidExporter {
         return switch (c.expansion()) {
             case STOPPED -> " ⊘";
             case DEPTH_LIMIT -> " ⋯";
+            case MULTIPLE_IMPLEMENTATIONS -> " ◇";
             case EXPANDED -> "";
         };
     }

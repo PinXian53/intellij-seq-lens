@@ -31,6 +31,9 @@ final class DiagramCanvas extends JComponent {
     private DiagramLayout.Hit hover;
     private DoubleConsumer zoomListener = z -> {
     };
+    /** 點擊可切換實作的參與者標頭時呼叫（由 DiagramView 顯示實作清單）。 */
+    private java.util.function.BiConsumer<com.pino.seqlens.model.Participant, MouseEvent> participantPopup = (p, e) -> {
+    };
     /** 在訊息上按右鍵時呼叫（由 DiagramView 顯示選單）。 */
     private java.util.function.BiConsumer<DiagramLayout.Message, MouseEvent> messagePopup = (m, e) -> {
     };
@@ -124,6 +127,10 @@ final class DiagramCanvas extends JComponent {
 
     double zoom() {
         return zoom;
+    }
+
+    void onParticipantPopup(java.util.function.BiConsumer<com.pino.seqlens.model.Participant, MouseEvent> handler) {
+        this.participantPopup = handler;
     }
 
     void onMessagePopup(java.util.function.BiConsumer<DiagramLayout.Message, MouseEvent> handler) {
@@ -224,8 +231,8 @@ final class DiagramCanvas extends JComponent {
                     DiagramLayout.Column c = hit(e.getPoint());
                     if (c != hover) {
                         hover = c;
-                        setCursor(c != null && c.participant().navigation() != null
-                                ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+                        boolean clickable = c != null && (c.participant().navigation() != null || c.participant().isSwitchable());
+                        setCursor(clickable ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
                         repaint();
                     }
                 }
@@ -239,8 +246,32 @@ final class DiagramCanvas extends JComponent {
                 @Override
                 public void mouseClicked(MouseEvent e) {
                     DiagramLayout.Column c = hit(e.getPoint());
-                    if (c != null && SwingUtilities.isLeftMouseButton(e)) {
+                    if (c == null || !SwingUtilities.isLeftMouseButton(e)) {
+                        return;
+                    }
+                    if (c.participant().isSwitchable()) {
+                        // 經由介面呼叫的參與者：點類別名稱切換實作
+                        participantPopup.accept(c.participant(), e);
+                    } else {
                         Navigation.navigate(project, c.participant().navigation());
+                    }
+                }
+
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    maybePopup(e);
+                }
+
+                @Override
+                public void mouseReleased(MouseEvent e) {
+                    maybePopup(e);
+                }
+
+                private void maybePopup(MouseEvent e) {
+                    DiagramLayout.Column c = e.isPopupTrigger() ? hit(e.getPoint()) : null;
+                    if (c != null && c.participant().isSwitchable()) {
+                        participantPopup.accept(c.participant(), e);
+                        e.consume();
                     }
                 }
             };
@@ -255,7 +286,18 @@ final class DiagramCanvas extends JComponent {
         @Override
         public @Nullable String getToolTipText(MouseEvent e) {
             DiagramLayout.Column c = hit(e.getPoint());
-            return c == null ? null : html(c.participant().tooltip());
+            if (c == null) {
+                return null;
+            }
+            com.pino.seqlens.model.Participant p = c.participant();
+            String tip = p.tooltip() == null ? p.displayName() : p.tooltip();
+            if (p.isSwitchable()) {
+                com.pino.seqlens.model.Dispatch d = p.dispatch();
+                tip += p.id().equals(d.interfaceFqn())
+                        ? "\n◇ " + d.candidates().size() + " implementations; click to choose one"
+                        : "\nImplementation of " + p.interfaceName() + " (" + d.reason().text() + "); click to switch";
+            }
+            return html(tip);
         }
 
         @Override

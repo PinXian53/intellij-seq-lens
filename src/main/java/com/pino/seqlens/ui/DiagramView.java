@@ -31,6 +31,8 @@ import com.pino.seqlens.SeqLensService;
 import com.pino.seqlens.export.MermaidExporter;
 import com.pino.seqlens.export.PlantUmlExporter;
 import com.pino.seqlens.model.DiagramEvent;
+import com.pino.seqlens.model.Dispatch;
+import com.pino.seqlens.model.Participant;
 import com.pino.seqlens.model.ResourceSummary;
 import com.pino.seqlens.model.SequenceDiagram;
 import com.pino.seqlens.settings.SeqLensConfigurable;
@@ -123,6 +125,7 @@ public final class DiagramView extends JPanel implements Disposable {
         toolbar.setTargetComponent(this);
 
         canvas.onMessagePopup(this::showMessagePopup);
+        canvas.onParticipantPopup(this::showParticipantPopup);
 
         banner.createActionLabel("Regenerate 2 levels deeper", () -> {
             depthOverride = diagram.getMaxDepth() + 2;
@@ -173,6 +176,14 @@ public final class DiagramView extends JPanel implements Disposable {
                     .append(ResourcePanel.plural((int) limited, "call")).append(limited == 1 ? " was" : " were")
                     .append(" not expanded (marked ⋯). Some of the flow may be missing.");
         }
+        long ambiguous = diagram.getEvents().stream()
+                .filter(e -> e instanceof DiagramEvent.Call c && c.expansion() == DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS)
+                .count();
+        if (ambiguous > 0) {
+            text.append(text.isEmpty() ? "" : " ").append(ResourcePanel.plural((int) ambiguous, "interface call"))
+                    .append(ambiguous == 1 ? " has" : " have")
+                    .append(" several implementations (marked ◇). Click the class name in the header to choose one.");
+        }
         if (diagram.isTruncated()) {
             text.append(text.isEmpty() ? "" : " ").append("Maximum number of calls reached; the diagram is truncated.");
         }
@@ -206,6 +217,53 @@ public final class DiagramView extends JPanel implements Disposable {
                 com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),
                 JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false);
         popup.show(new RelativePoint(event));
+    }
+
+    /** 點擊標頭中可切換的類別名稱：列出介面的所有實作，目前的打勾。 */
+    private void showParticipantPopup(Participant participant, java.awt.event.MouseEvent event) {
+        Dispatch dispatch = participant.dispatch();
+        if (dispatch == null) {
+            return;
+        }
+        DefaultActionGroup menu = new DefaultActionGroup();
+        boolean manual = dispatch.reason() == Dispatch.Reason.MANUAL;
+        for (String candidate : dispatch.candidates()) {
+            boolean selected = candidate.equals(participant.id());
+            menu.add(new SimpleAction(Dispatch.simpleName(candidate), candidate,
+                    selected ? AllIcons.Actions.Checked : AllIcons.Nodes.Class,
+                    e -> {
+                        if (!selected || !manual) {
+                            chooseImplementation(dispatch.interfaceFqn(), candidate);
+                        }
+                    }));
+        }
+        menu.addSeparator();
+        menu.add(new SimpleAction(manual ? "Automatic" : "Automatic (current)",
+                "Forget the manual choice and detect the implementation automatically",
+                manual ? AllIcons.Actions.Refresh : AllIcons.Actions.Checked,
+                e -> {
+                    if (manual) {
+                        chooseImplementation(dispatch.interfaceFqn(), null);
+                    }
+                }));
+        menu.addSeparator();
+        menu.add(new SimpleAction("Jump to " + participant.displayName(), null, AllIcons.Actions.EditSource,
+                e -> Navigation.navigate(project, participant.navigation())));
+        ListPopup popup = JBPopupFactory.getInstance().createActionGroupPopup(
+                "Implementation of " + participant.interfaceName(), menu,
+                com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project),
+                JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, false);
+        popup.show(new RelativePoint(event));
+    }
+
+    /** 記住介面要展開的實作（null = 恢復自動判斷），並重新產生這張圖。 */
+    private void chooseImplementation(String interfaceFqn, @Nullable String implFqn) {
+        SeqLensSettings.getInstance().getState().setImplementationChoice(interfaceFqn, implFqn);
+        notify(implFqn == null
+                        ? "Implementation of " + Dispatch.simpleName(interfaceFqn) + " is detected automatically again"
+                        : Dispatch.simpleName(interfaceFqn) + " now expands " + Dispatch.simpleName(implFqn),
+                NotificationType.INFORMATION);
+        regenerate();
     }
 
     private void addStopPattern(String pattern) {

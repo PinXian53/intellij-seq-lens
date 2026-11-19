@@ -31,6 +31,14 @@ public final class SequenceDiagram {
         return participants.computeIfAbsent(participant.id(), k -> participant);
     }
 
+    /** 為既有的參與者補上實作選擇資訊（已經有的不覆蓋，保持第一次經由的介面）。 */
+    public void attachDispatch(@NotNull String id, @NotNull Dispatch dispatch) {
+        Participant p = participants.get(id);
+        if (p != null && p.dispatch() == null) {
+            participants.put(id, new Participant(p.id(), p.displayName(), p.kind(), p.tooltip(), p.navigation(), dispatch));
+        }
+    }
+
     public boolean hasParticipant(@NotNull String id) {
         return participants.containsKey(id);
     }

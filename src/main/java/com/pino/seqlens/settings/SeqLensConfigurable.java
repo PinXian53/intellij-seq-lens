@@ -55,6 +55,7 @@ public final class SeqLensConfigurable implements Configurable {
     private JBCheckBox resolveImpl;
     // 不展開與排除
     private JBTextArea stopPatterns;
+    private JBTextArea implementationChoices;
     private JBTextField excludes;
     // 資料存取 / 外部 API / 框架
     private JBCheckBox detectJpa;
@@ -80,8 +81,10 @@ public final class SeqLensConfigurable implements Configurable {
         skipGettersSetters = new JBCheckBox("Skip getters / setters");
         skipPrivate = new JBCheckBox("Skip private methods");
         includeLibrary = new JBCheckBox("Include library calls");
-        resolveImpl = new JBCheckBox("Expand the implementation when an interface has only one");
+        resolveImpl = new JBCheckBox("Detect interface implementations automatically");
 
+        implementationChoices = new JBTextArea(4, 40);
+        implementationChoices.getEmptyText().setText("e.g. com.foo.PaymentGateway=com.foo.StripeGateway");
         stopPatterns = new JBTextArea(5, 40);
         stopPatterns.getEmptyText().setText("e.g. com.foo.AuditService, *Client, LogUtil#*");
         excludes = new JBTextField();
@@ -117,8 +120,22 @@ public final class SeqLensConfigurable implements Configurable {
                         "By default only calls into project sources are drawn. When enabled, library method calls are drawn too "
                                 + "(their internals are never expanded). 'Excluded packages' still apply."))
                 .addComponent(withHelp(resolveImpl,
-                        "When calling an interface or abstract method that has exactly one implementation in the project, "
-                                + "expand that implementation. With several implementations the diagram stops at the interface.")));
+                        "When calling an interface or abstract method, expand the implementation that Spring would inject:<br>"
+                                + "1. the only implementation, or the only one outside test sources<br>"
+                                + "2. the one matching <code>@Qualifier</code> / <code>@Named</code> on the field or constructor parameter<br>"
+                                + "3. the one whose bean name equals the field or parameter name, "
+                                + "e.g. <code>PaymentGateway stripeGateway</code> → <code>StripeGateway</code><br>"
+                                + "4. the only one annotated <code>@Primary</code><br>"
+                                + "Otherwise the diagram stops at the interface and the call is marked <b>◇</b>.")));
+
+        JPanel implementations = section("Implementations", FormBuilder.createFormBuilder()
+                .addLabeledComponent(labelWithHelp("Chosen implementations:",
+                        "Implementations you picked for interfaces, one per line as "
+                                + "<code>interface=implementation</code> (fully qualified names).<br>"
+                                + "A choice here always wins over automatic detection.<br>"
+                                + "The easiest way to add one is to click the class name in the diagram header "
+                                + "(marked <b>▾</b>) and pick an implementation; you can switch again at any time."),
+                        scroll(implementationChoices), true));
 
         JPanel stopAndExclude = section("Stop List and Exclusions", FormBuilder.createFormBuilder()
                 .addLabeledComponent(labelWithHelp("Stop list:",
@@ -166,7 +183,7 @@ public final class SeqLensConfigurable implements Configurable {
 
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        for (JPanel p : new JPanel[]{display, scope, stopAndExclude, dataAccess, http, frameworks}) {
+        for (JPanel p : new JPanel[]{display, scope, implementations, stopAndExclude, dataAccess, http, frameworks}) {
             p.setAlignmentX(0f);
             content.add(p);
         }
@@ -221,6 +238,7 @@ public final class SeqLensConfigurable implements Configurable {
         s.includeLibraryCalls = includeLibrary.isSelected();
         s.resolveSingleImplementation = resolveImpl.isSelected();
         s.stopPatterns = stopPatterns.getText();
+        s.implementationChoices = implementationChoices.getText();
         s.excludePatterns = excludes.getText();
         s.detectJpa = detectJpa.isSelected();
         s.showSqlNotes = showSqlNotes.isSelected();
@@ -245,6 +263,7 @@ public final class SeqLensConfigurable implements Configurable {
                 || cur.includeLibraryCalls != ui.includeLibraryCalls
                 || cur.resolveSingleImplementation != ui.resolveSingleImplementation
                 || !Objects.equals(cur.stopPatterns, ui.stopPatterns)
+                || !Objects.equals(cur.implementationChoices, ui.implementationChoices)
                 || !Objects.equals(cur.excludePatterns, ui.excludePatterns)
                 || cur.detectJpa != ui.detectJpa
                 || cur.showSqlNotes != ui.showSqlNotes
@@ -277,6 +296,7 @@ public final class SeqLensConfigurable implements Configurable {
         includeLibrary.setSelected(s.includeLibraryCalls);
         resolveImpl.setSelected(s.resolveSingleImplementation);
         stopPatterns.setText(s.stopPatterns);
+        implementationChoices.setText(s.implementationChoices);
         excludes.setText(s.excludePatterns);
         detectJpa.setSelected(s.detectJpa);
         showSqlNotes.setSelected(s.showSqlNotes);

@@ -53,21 +53,42 @@ final class DiagramLayout {
     record Message(int x1, int x2, int y, boolean self, int selfBottom, String label, MessageKind kind,
                    boolean isReturn, Rectangle bounds, @Nullable String tooltip,
                    @Nullable SmartPsiElementPointer<? extends PsiElement> navigation,
-                   DiagramEvent.Expansion expansion, @Nullable String targetKey) implements Hit {
+                   DiagramEvent.Expansion expansion, @Nullable String targetKey,
+                   @Nullable com.pino.seqlens.model.Dispatch dispatch) implements Hit {
 
         Message(int x1, int x2, int y, boolean self, int selfBottom, String label, MessageKind kind,
                 boolean isReturn, Rectangle bounds, @Nullable String tooltip,
                 @Nullable SmartPsiElementPointer<? extends PsiElement> navigation) {
             this(x1, x2, y, self, selfBottom, label, kind, isReturn, bounds, tooltip, navigation,
-                    DiagramEvent.Expansion.EXPANDED, null);
+                    DiagramEvent.Expansion.EXPANDED, null, null);
         }
     }
 
-    /** 未展開標記的文字（⊘ 不展開清單、⋯ 達最大深度），null 代表無標記。 */
+    /** 標頭方框中的文字：可切換實作時加上 ▾。 */
+    static String headerLabel(Participant p) {
+        return p.isSwitchable() ? p.displayName() + " ▾" : p.displayName();
+    }
+
+    /**
+     * 方框上方的介面說明：已選定實作時顯示原本的介面名稱（«ShippingCarrier»），
+     * 停在介面上時顯示實作數量；不是經由介面呼叫時為 null。
+     */
+    static @Nullable String interfaceNote(Participant p) {
+        if (!p.isSwitchable()) {
+            return null;
+        }
+        com.pino.seqlens.model.Dispatch d = p.dispatch();
+        return p.id().equals(d.interfaceFqn())
+                ? "◇ " + d.candidates().size() + " implementations"
+                : "«" + p.interfaceName() + "»";
+    }
+
+    /** 未展開標記的文字（⊘ 不展開清單、⋯ 達最大深度、◇ 多個實作），null 代表無標記。 */
     static @Nullable String badge(DiagramEvent.Expansion expansion) {
         return switch (expansion) {
             case STOPPED -> "⊘";
             case DEPTH_LIMIT -> "⋯";
+            case MULTIPLE_IMPLEMENTATIONS -> "◇";
             case EXPANDED -> null;
         };
     }
@@ -142,8 +163,13 @@ final class DiagramLayout {
         for (int i = 0; i < n; i++) {
             Participant p = participants.get(i);
             layout.columnIndex.put(p.id(), i);
-            boxW[i] = Math.max(BOX_MIN_W, fm.stringWidth(p.displayName()) + BOX_PAD * 2
+            boxW[i] = Math.max(BOX_MIN_W, fm.stringWidth(headerLabel(p)) + BOX_PAD * 2
                     + (p.kind() == ParticipantKind.TABLE ? JBUI.scale(8) : 0));
+            String note = interfaceNote(p);
+            if (note != null) {
+                // 方框上方的介面名稱用較小字型，以目前字型量測是保守的估計
+                boxW[i] = Math.max(boxW[i], fm.stringWidth(note) + JBUI.scale(8));
+            }
         }
 
         // 相鄰欄位的中心距離
@@ -232,7 +258,7 @@ final class DiagramLayout {
                         int bottom = arrowY + SELF_H;
                         Rectangle bounds = new Rectangle(x1, y, Math.max(labelW + JBUI.scale(8), SELF_W + 4), bottom - y + 4);
                         layout.messages.add(new Message(x1, x2, arrowY, true, bottom, c.label(), c.kind(), false,
-                                bounds, c.tooltip(), c.navigation(), c.expansion(), c.targetKey()));
+                                bounds, c.tooltip(), c.navigation(), c.expansion(), c.targetKey(), c.dispatch()));
                         frames.push(new Frame(t, active[t], bottom));
                         active[t]++;
                         y = bottom + ROW_GAP;
@@ -244,7 +270,7 @@ final class DiagramLayout {
                         int x2 = edge(colX[t], active[t], -dir);
                         Rectangle bounds = new Rectangle(Math.min(x1, x2), y, Math.abs(x2 - x1), arrowY - y + JBUI.scale(5));
                         layout.messages.add(new Message(x1, x2, arrowY, false, 0, c.label(), c.kind(), false,
-                                bounds, c.tooltip(), c.navigation(), c.expansion(), c.targetKey()));
+                                bounds, c.tooltip(), c.navigation(), c.expansion(), c.targetKey(), c.dispatch()));
                         frames.push(new Frame(t, active[t], arrowY));
                         active[t]++;
                         y = arrowY + ROW_GAP;

@@ -8,7 +8,6 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.searches.OverridingMethodsSearch;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.JavaPsiRecordUtil;
 import com.intellij.psi.util.PropertyUtilBase;
@@ -16,6 +15,7 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtilCore;
 import com.pino.seqlens.model.DiagramEvent;
+import com.pino.seqlens.model.Dispatch;
 import com.pino.seqlens.model.DiagramEvent.FragmentType;
 import com.pino.seqlens.model.MessageKind;
 import com.pino.seqlens.model.Participant;
@@ -60,8 +60,8 @@ public final class SequenceAnalyzer {
     private final PersistenceDetector persistence;
     private final HttpClientDetector http;
     private final CallPatternMatcher stopList;
+    private final ImplementationResolver implementations;
     private final Deque<PsiMethod> stack = new ArrayDeque<>();
-    private final Map<PsiMethod, PsiMethod> singleImplCache = new HashMap<>();
     private SequenceDiagram diagram;
     private List<DiagramEvent> events;
     private int callCount;
@@ -81,6 +81,8 @@ public final class SequenceAnalyzer {
         StringResolver strings = new StringResolver(project);
         this.persistence = new PersistenceDetector(project, strings);
         this.stopList = CallPatternMatcher.parse(settings.stopPatterns);
+        this.implementations = new ImplementationResolver(project, settings.implementationChoiceMap(),
+                settings.resolveSingleImplementation);
         this.http = new HttpClientDetector(strings);
     }
 
@@ -462,27 +464,38 @@ public final class SequenceAnalyzer {
                 body = override;
             }
         }
-        // 介面 / 抽象方法只有一個實作時展開實作
-        if (!isStatic && body.getBody() == null && settings.resolveSingleImplementation
+        // 介面 / 抽象方法：手動選擇或自動判斷要展開的實作
+        Dispatch dispatch = null;
+        if (!isStatic && body.getBody() == null
                 && (target.isInterface() || target.hasModifierProperty(PsiModifier.ABSTRACT))) {
-            PsiMethod impl = findSingleImplementation(body);
-            if (impl != null && impl.getContainingClass() != null) {
-                body = impl;
-                target = impl.getContainingClass();
+            ImplementationResolver.Resolution resolution = implementations.resolve(body, target, qualifier);
+            if (resolution != null) {
+                dispatch = resolution.dispatch();
+                PsiMethod impl = resolution.chosen();
+                if (impl != null && impl.getContainingClass() != null) {
+                    body = impl;
+                    target = impl.getContainingClass();
+                }
             }
         }
         if (!shouldInclude(method, body, target)) {
             return;
         }
         String to = participantFor(target, null);
+        if (dispatch != null && dispatch.candidates().size() > 1) {
+            diagram.attachDispatch(to, dispatch);
+        }
         if (!countCall()) {
             return;
         }
         String label = method.getName() + "(" + argsLabel + ")";
         DiagramEvent.Expansion expansion = expansionOf(method, body, target, ctx);
+        if (expansion == DiagramEvent.Expansion.EXPANDED && dispatch != null && dispatch.isAmbiguous()) {
+            expansion = DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS;
+        }
         events.add(new DiagramEvent.Call(ctx.self(), to, label, MessageKind.CALL,
-                tooltip(site, methodSignature(body) + expansionNote(expansion)), pointer(site),
-                expansion, targetKey(target, body)));
+                tooltip(site, methodSignature(body) + expansionNote(expansion) + dispatchNote(dispatch)), pointer(site),
+                expansion, targetKey(target, body), dispatch));
         if (expansion == DiagramEvent.Expansion.EXPANDED) {
             descend(body, to, target, ctx);
         }
@@ -575,8 +588,25 @@ public final class SequenceAnalyzer {
         return switch (expansion) {
             case STOPPED -> "\n⊘ Matches the stop list; not expanded";
             case DEPTH_LIMIT -> "\n⋯ Maximum depth " + settings.maxDepth + " reached; inner calls are not shown";
+            case MULTIPLE_IMPLEMENTATIONS -> "\n◇ Several implementations; click the class name in the header to choose one";
             case EXPANDED -> "";
         };
+    }
+
+    private static String dispatchNote(@Nullable Dispatch dispatch) {
+        if (dispatch == null || dispatch.candidates().size() <= 1 && dispatch.reason() == Dispatch.Reason.SINGLE) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\n");
+        if (dispatch.chosen() != null) {
+            sb.append("Implementation: ").append(Dispatch.simpleName(dispatch.chosen()))
+                    .append(" (").append(dispatch.reason().text()).append(')');
+        }
+        if (dispatch.candidates().size() > 1) {
+            sb.append(dispatch.chosen() != null ? "\n" : "").append("Implementations: ")
+                    .append(String.join(", ", dispatch.candidates().stream().map(Dispatch::simpleName).toList()));
+        }
+        return sb.toString();
     }
 
     private static String targetKey(PsiClass target, PsiMethod body) {
@@ -713,50 +743,6 @@ public final class SequenceAnalyzer {
         }
         VirtualFile file = PsiUtilCore.getVirtualFile(element);
         return file != null && fileIndex.isInSourceContent(file);
-    }
-
-    /**
-     * 找出介面 / 抽象方法唯一的實作：
-     * 1. 專案中只有一個實作 → 用它
-     * 2. 有多個時排除測試程式中的實作（測試用的假物件），只剩一個正式實作 → 用它
-     * 3. 正式實作中只有一個標了 Spring {@code @Primary} → 用它
-     */
-    private @Nullable PsiMethod findSingleImplementation(PsiMethod method) {
-        if (singleImplCache.containsKey(method)) {
-            return singleImplCache.get(method);
-        }
-        List<PsiMethod> all = new java.util.ArrayList<>();
-        OverridingMethodsSearch.search(method, GlobalSearchScope.projectScope(project), true).forEach(candidate -> {
-            if (candidate.getBody() != null && !candidate.hasModifierProperty(PsiModifier.ABSTRACT)
-                    && candidate.getContainingClass() != null
-                    && !(candidate.getContainingClass() instanceof PsiAnonymousClass)) {
-                all.add(candidate);
-            }
-            return all.size() < 50;
-        });
-        PsiMethod result = null;
-        if (all.size() == 1) {
-            result = all.getFirst();
-        } else if (all.size() > 1) {
-            List<PsiMethod> production = all.stream().filter(m -> !isTestElement(m)).toList();
-            if (production.size() == 1) {
-                result = production.getFirst();
-            } else if (production.size() > 1) {
-                List<PsiMethod> primary = production.stream()
-                        .filter(m -> m.getContainingClass().hasAnnotation("org.springframework.context.annotation.Primary"))
-                        .toList();
-                if (primary.size() == 1) {
-                    result = primary.getFirst();
-                }
-            }
-        }
-        singleImplCache.put(method, result);
-        return result;
-    }
-
-    private boolean isTestElement(PsiElement element) {
-        VirtualFile file = PsiUtilCore.getVirtualFile(element);
-        return file != null && fileIndex.isInTestSourceContent(file);
     }
 
     // ================================================================ 參與者

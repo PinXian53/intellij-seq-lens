@@ -228,6 +228,9 @@ final class ResourcePanel extends JPanel {
         if (usages.stream().anyMatch(u -> u.expansion() == DiagramEvent.Expansion.DEPTH_LIMIT)) {
             return "  ⋯ not expanded (max depth reached)";
         }
+        if (usages.stream().anyMatch(u -> u.expansion() == DiagramEvent.Expansion.MULTIPLE_IMPLEMENTATIONS)) {
+            return "  ◇ several implementations";
+        }
         if (usages.stream().anyMatch(u -> u.expansion() == DiagramEvent.Expansion.STOPPED)) {
             return "  ⊘ not expanded (stop list)";
         }

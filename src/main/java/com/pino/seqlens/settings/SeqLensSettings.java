@@ -43,6 +43,8 @@ public final class SeqLensSettings implements PersistentStateComponent<SeqLensSe
         public String excludePatterns = "java.*, javax.*, jakarta.*, kotlin.*, org.slf4j.*, org.apache.logging.*, lombok.*";
         /** 不展開清單：命中的 class / method 仍會畫出呼叫，但不再往下追（每行一個樣式）。 */
         public String stopPatterns = "";
+        /** 手動指定的介面實作，每行 {@code 介面完整名稱=實作完整名稱}。 */
+        public String implementationChoices = "";
         /** 資源清單各區塊的顯示開關。 */
         public boolean resourceShowApis = true;
         public boolean resourceShowTables = true;
@@ -59,6 +61,36 @@ public final class SeqLensSettings implements PersistentStateComponent<SeqLensSe
                     .map(String::trim)
                     .filter(p -> !p.isEmpty())
                     .toList();
+        }
+
+        /** 介面 → 實作的對照表。 */
+        public java.util.Map<String, String> implementationChoiceMap() {
+            java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
+            if (implementationChoices == null) {
+                return map;
+            }
+            for (String line : implementationChoices.split("\\n")) {
+                String l = line.strip();
+                int eq = l.indexOf('=');
+                if (l.isEmpty() || l.startsWith("#") || eq <= 0) {
+                    continue;
+                }
+                map.put(l.substring(0, eq).strip(), l.substring(eq + 1).strip());
+            }
+            return map;
+        }
+
+        /** 設定（impl 不為 null）或清除某個介面的手動選擇。 */
+        public void setImplementationChoice(String interfaceFqn, @org.jetbrains.annotations.Nullable String implFqn) {
+            java.util.Map<String, String> map = implementationChoiceMap();
+            if (implFqn == null) {
+                map.remove(interfaceFqn);
+            } else {
+                map.put(interfaceFqn, implFqn);
+            }
+            StringBuilder sb = new StringBuilder();
+            map.forEach((k, v) -> sb.append(k).append('=').append(v).append('\n'));
+            implementationChoices = sb.toString().strip();
         }
 
         public boolean isExcluded(String qualifiedName) {

@@ -16,6 +16,7 @@ public sealed interface DiagramEvent {
      *
      * @param expansion 被呼叫方法是否有往下展開
      * @param targetKey 被呼叫的方法，格式 {@code com.foo.Bar#method}（供「加入不展開清單」與資源清單使用），可為 null
+     * @param dispatch  呼叫介面時選擇實作的結果（供右鍵「選擇實作」使用），可為 null
      */
     record Call(@NotNull String from,
                 @NotNull String to,
@@ -24,11 +25,18 @@ public sealed interface DiagramEvent {
                 @Nullable String tooltip,
                 @Nullable SmartPsiElementPointer<? extends PsiElement> navigation,
                 @NotNull Expansion expansion,
-                @Nullable String targetKey) implements DiagramEvent {
+                @Nullable String targetKey,
+                @Nullable Dispatch dispatch) implements DiagramEvent {
 
         public Call(@NotNull String from, @NotNull String to, @NotNull String label, @NotNull MessageKind kind,
                     @Nullable String tooltip, @Nullable SmartPsiElementPointer<? extends PsiElement> navigation) {
-            this(from, to, label, kind, tooltip, navigation, Expansion.EXPANDED, null);
+            this(from, to, label, kind, tooltip, navigation, Expansion.EXPANDED, null, null);
+        }
+
+        public Call(@NotNull String from, @NotNull String to, @NotNull String label, @NotNull MessageKind kind,
+                    @Nullable String tooltip, @Nullable SmartPsiElementPointer<? extends PsiElement> navigation,
+                    @NotNull Expansion expansion, @Nullable String targetKey) {
+            this(from, to, label, kind, tooltip, navigation, expansion, targetKey, null);
         }
     }
 
@@ -39,7 +47,9 @@ public sealed interface DiagramEvent {
         /** 命中「不展開清單」，刻意不往下追。 */
         STOPPED,
         /** 已達最大深度，可能有未呈現的呼叫。 */
-        DEPTH_LIMIT
+        DEPTH_LIMIT,
+        /** 介面有多個實作，無法決定要展開哪一個（可手動選擇）。 */
+        MULTIPLE_IMPLEMENTATIONS
     }
 
     /** 回傳；{@code visible == false} 時只結束 activation，不畫箭頭。 */

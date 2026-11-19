@@ -160,9 +160,16 @@ final class DiagramPainter {
         }
         g.draw(box);
         g.setColor(TEXT);
-        g.drawString(p.displayName(), c.x() - fm.stringWidth(p.displayName()) / 2,
-                top + (h - fm.getHeight()) / 2 + fm.getAscent());
-        if (p.kind() == ParticipantKind.REPOSITORY || p.kind() == ParticipantKind.BOUNDARY
+        String label = DiagramLayout.headerLabel(p);
+        g.drawString(label, c.x() - fm.stringWidth(label) / 2, top + (h - fm.getHeight()) / 2 + fm.getAscent());
+        String interfaceNote = DiagramLayout.interfaceNote(p);
+        if (interfaceNote != null) {
+            // 經由介面呼叫：方框上方顯示原本的介面名稱（取代 «repository» 等標記）
+            g.setFont(font.deriveFont(font.getSize2D() - 1f));
+            FontMetrics sfm = g.getFontMetrics();
+            g.setColor(hover ? HOVER : CLASS_BORDER);
+            g.drawString(interfaceNote, c.x() - sfm.stringWidth(interfaceNote) / 2, top - JBUI.scale(3));
+        } else if (p.kind() == ParticipantKind.REPOSITORY || p.kind() == ParticipantKind.BOUNDARY
                 || p.kind() == ParticipantKind.EXTERNAL || p.kind() == ParticipantKind.MAPPER) {
             g.setFont(font.deriveFont(font.getSize2D() - 2f));
             String stereo = switch (p.kind()) {
@@ -344,7 +351,11 @@ final class DiagramPainter {
         int h = fm.getAscent();
         int bx = x + JBUI.scale(5);
         int by = baseline - fm.getAscent() + JBUI.scale(1);
-        Color color = m.expansion() == com.pino.seqlens.model.DiagramEvent.Expansion.DEPTH_LIMIT ? TABLE_BORDER : MUTED;
+        Color color = switch (m.expansion()) {
+            case DEPTH_LIMIT -> TABLE_BORDER;
+            case MULTIPLE_IMPLEMENTATIONS -> CLASS_BORDER;
+            default -> MUTED;
+        };
         g.setStroke(new BasicStroke(1f));
         g.setColor(BACKGROUND);
         g.fill(new RoundRectangle2D.Double(bx, by, w, h, h, h));
