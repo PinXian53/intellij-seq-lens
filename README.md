@@ -24,6 +24,8 @@
 Every arrow, participant and SQL note is clickable and jumps to the source, and data access and outgoing HTTP calls
 are drawn against the tables and services they reach, so you can see what a request really does before reading every line.
 
+![plugin-ui.png](pic/plugin-ui.png)
+
 ## Features
 
 ### Sequence Diagrams from Java Methods
@@ -81,7 +83,7 @@ Requires JDK 21 (selected automatically through the Gradle toolchain).
 ```
 
 ## Limitations
-- The analysis is static: runtime types cannot be known, so an interface with several implementations stops at the interface.
+- The analysis is static: runtime types cannot be known, so when an interface has several implementations that cannot be told apart, the diagram stops at the interface until you pick one from the header.
 - Dynamically built SQL and URLs (`StringBuilder`, conditional concatenation) are only partially recovered; unknown parts are shown as `?`.
 - SQL starting with `≈` is derived from the method name for illustration and is not the exact statement executed.
 - Criteria API, Querydsl and MyBatis XML mappers are not supported yet.
